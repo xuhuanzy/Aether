@@ -24,6 +24,47 @@ fn openai_image_success_disables_local_success_failover(
             .eq_ignore_ascii_case("openai:image")
 }
 
+fn is_anyrouter_name_or_url(name: &str) -> bool {
+    let lower = name.trim().to_ascii_lowercase();
+    lower == "anyrouter"
+        || lower.contains("anyrouter.top")
+        || lower.contains("a-ocnfniawgw.cn-shanghai.fcapp.run")
+}
+
+pub(crate) const DEFAULT_ANYROUTER_500_RETRY_DELAY: std::time::Duration =
+    std::time::Duration::from_secs(3);
+
+pub(crate) fn is_anyrouter_plan(plan: &ExecutionPlan) -> bool {
+    plan.provider_name
+        .as_deref()
+        .is_some_and(is_anyrouter_name_or_url)
+        || is_anyrouter_name_or_url(&plan.url)
+        || plan.provider_id.eq_ignore_ascii_case("anyrouter")
+}
+
+pub(crate) fn anyrouter_500_retry_delay(
+    plan: &ExecutionPlan,
+    status_code: u16,
+) -> Option<std::time::Duration> {
+    if status_code == 500 && is_anyrouter_plan(plan) {
+        Some(DEFAULT_ANYROUTER_500_RETRY_DELAY)
+    } else {
+        None
+    }
+}
+
+pub(crate) async fn maybe_apply_anyrouter_500_retry_delay(plan: &ExecutionPlan, status_code: u16) {
+    if let Some(delay) = anyrouter_500_retry_delay(plan, status_code) {
+        tracing::warn!(
+            request_id = %plan.request_id,
+            provider_id = %plan.provider_id,
+            provider_name = plan.provider_name.as_deref().unwrap_or("-"),
+            "applying 3s retry delay for anyrouter after 500 error"
+        );
+        tokio::time::sleep(delay).await;
+    }
+}
+
 pub(crate) async fn should_retry_next_local_candidate_sync(
     state: &AppState,
     plan: &ExecutionPlan,

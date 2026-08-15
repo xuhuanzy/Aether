@@ -17,9 +17,11 @@ use tracing::warn;
 use crate::api::response::attach_control_metadata_headers;
 use crate::clock::current_unix_ms as current_request_candidate_unix_ms;
 use crate::control::GatewayControlDecision;
-use crate::execution_runtime::ai_attempt_retry_scope_from_failure_disposition;
 use crate::execution_runtime::submission::{
     resolve_core_error_background_report_kind, submit_local_core_error_or_sync_finalize,
+};
+use crate::execution_runtime::{
+    ai_attempt_retry_scope_from_failure_disposition, maybe_apply_anyrouter_500_retry_delay,
 };
 use crate::log_ids::short_request_id;
 use crate::orchestration::{
@@ -542,6 +544,7 @@ pub(super) async fn handle_prefetch_provider_private_stream_error(
         failure_analysis.decision,
         LocalFailoverDecision::RetryNextCandidate
     ) {
+        maybe_apply_anyrouter_500_retry_delay(plan, status_code).await;
         let failure_disposition = classify_failure_disposition(
             &plan.provider_api_format,
             failure_analysis.classification,
@@ -659,6 +662,7 @@ pub(super) async fn handle_prefetch_stream_failure(
             LocalFailoverDecision::RetryNextCandidate
         )
     {
+        maybe_apply_anyrouter_500_retry_delay(plan, payload.status_code).await;
         let failure_disposition = classify_failure_disposition(
             &plan.provider_api_format,
             failure_analysis.classification,

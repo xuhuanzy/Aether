@@ -66,8 +66,9 @@ use crate::execution_runtime::windsurf::maybe_execute_windsurf_sync;
 use crate::execution_runtime::{
     ai_attempt_retry_scope_from_failure_disposition, analyze_local_candidate_failover_sync,
     apply_endpoint_response_header_rules, attach_provider_response_headers_to_report_context,
-    local_failover_response_text, resolve_core_sync_error_finalize_report_kind,
-    should_fallback_to_control_sync, should_finalize_sync_response, LocalFailoverDecision,
+    local_failover_response_text, maybe_apply_anyrouter_500_retry_delay,
+    resolve_core_sync_error_finalize_report_kind, should_fallback_to_control_sync,
+    should_finalize_sync_response, LocalFailoverDecision,
 };
 use crate::log_ids::short_request_id;
 use crate::orchestration::{
@@ -2753,6 +2754,7 @@ async fn execute_execution_runtime_sync_impl(
         local_failover_analysis.decision,
         LocalFailoverDecision::RetryNextCandidate
     ) {
+        maybe_apply_anyrouter_500_retry_delay(&plan, result.status_code).await;
         let failure_disposition = crate::orchestration::classify_failure_disposition(
             &plan.provider_api_format,
             local_failover_analysis.classification,

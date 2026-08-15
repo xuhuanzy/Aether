@@ -29,7 +29,7 @@ pub(crate) use self::constants::{
 };
 pub(crate) use self::fallback::{
     analyze_local_candidate_failover_sync, local_failover_response_text,
-    resolve_core_stream_direct_finalize_report_kind,
+    maybe_apply_anyrouter_500_retry_delay, resolve_core_stream_direct_finalize_report_kind,
     resolve_core_stream_error_finalize_report_kind, resolve_core_sync_error_finalize_report_kind,
     resolve_local_candidate_failover_analysis_stream,
     resolve_local_candidate_failover_decision_stream, should_fallback_to_control_stream,

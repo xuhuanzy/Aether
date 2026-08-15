@@ -101,7 +101,7 @@ use crate::execution_runtime::windsurf::maybe_execute_windsurf_stream;
 use crate::execution_runtime::{
     ai_attempt_retry_scope_from_failure_disposition, apply_endpoint_response_header_rules,
     attach_provider_response_headers_to_report_context, local_failover_response_text,
-    resolve_core_stream_direct_finalize_report_kind,
+    maybe_apply_anyrouter_500_retry_delay, resolve_core_stream_direct_finalize_report_kind,
     resolve_core_stream_error_finalize_report_kind,
     resolve_local_candidate_failover_analysis_stream, should_fallback_to_control_stream,
     should_retry_next_local_candidate_stream, LocalFailoverDecision,
@@ -5816,6 +5816,7 @@ async fn execute_stream_from_frame_stream_with_retry_scope(
             "gateway resolved execution runtime stream failover decision"
         );
         if matches!(failover_decision, LocalFailoverDecision::RetryNextCandidate) {
+            maybe_apply_anyrouter_500_retry_delay(&plan, status_code).await;
             let failure_disposition = classify_failure_disposition(
                 &plan.provider_api_format,
                 failover_analysis.classification,
