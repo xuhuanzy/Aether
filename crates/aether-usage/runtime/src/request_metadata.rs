@@ -701,9 +701,36 @@ fn usage_request_metadata_value_size_hint(value: &Value) -> usize {
     }
 }
 
+pub fn is_anyrouter_url(url: &str) -> bool {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    lower.contains("anyrouter.top") || lower.contains("a-ocnfniawgw.cn-shanghai.fcapp.run")
+}
+
+pub fn is_anyrouter_name_or_url(name: &str) -> bool {
+    let lower = name.trim().to_ascii_lowercase();
+    lower == "anyrouter" || is_anyrouter_url(&lower)
+}
+
+pub fn sanitize_failed_anyrouter_usage_data(data: &mut crate::event::UsageEventData) {
+    data.request_metadata = None;
+    data.request_body = None;
+    data.request_body_ref = None;
+    data.request_body_state = Some(UsageBodyCaptureState::None);
+    data.request_headers = None;
+    data.provider_request_body = None;
+    data.provider_request_body_ref = None;
+    data.provider_request_body_state = Some(UsageBodyCaptureState::None);
+    data.provider_request_headers = None;
+}
+
 #[cfg(test)]
 mod tests {
     use aether_contracts::{ExecutionPlan, RequestBody};
+    use aether_data_contracts::repository::usage::UsageBodyCaptureState;
     use serde_json::{json, Value};
     use std::collections::BTreeMap;
 
@@ -715,11 +742,12 @@ mod tests {
     use super::{
         attach_client_request_body_metadata, attach_provider_actual_service_tier_metadata,
         attach_provider_request_body_metadata, attach_provider_response_body_metadata,
-        build_usage_request_metadata_seed, merge_usage_request_metadata,
+        build_usage_request_metadata_seed, is_anyrouter_url, merge_usage_request_metadata,
         merge_usage_request_metadata_owned, refresh_provider_response_body_metadata,
-        retain_first_byte_request_metadata, sanitize_usage_request_metadata,
-        sanitize_usage_request_metadata_ref, MAX_USAGE_REQUEST_METADATA_BYTES,
-        MAX_USAGE_REQUEST_METADATA_DEPTH, MAX_USAGE_REQUEST_METADATA_NODES,
+        retain_first_byte_request_metadata, sanitize_failed_anyrouter_usage_data,
+        sanitize_usage_request_metadata, sanitize_usage_request_metadata_ref,
+        MAX_USAGE_REQUEST_METADATA_BYTES, MAX_USAGE_REQUEST_METADATA_DEPTH,
+        MAX_USAGE_REQUEST_METADATA_NODES,
     };
 
     fn sample_plan() -> ExecutionPlan {
@@ -1323,6 +1351,75 @@ mod tests {
             merge_usage_request_metadata_owned(base.clone(), override_value.clone()),
             merge_usage_request_metadata(base, override_value)
         );
+    }
+
+    #[test]
+    fn anyrouter_url_matches_primary_and_backup_domains() {
+        assert!(is_anyrouter_url("https://anyrouter.top"));
+        assert!(is_anyrouter_url(
+            "https://anyrouter.top/v1/chat/completions"
+        ));
+        assert!(is_anyrouter_url("http://ANYROUTER.TOP/"));
+        assert!(is_anyrouter_url(
+            "https://a-ocnfniawgw.cn-shanghai.fcapp.run"
+        ));
+        assert!(is_anyrouter_url(
+            "https://a-ocnfniawgw.cn-shanghai.fcapp.run/api/v1"
+        ));
+        assert!(!is_anyrouter_url("https://api.openai.com/v1"));
+        assert!(!is_anyrouter_url("https://example.com"));
+        assert!(!is_anyrouter_url(""));
+    }
+
+    #[test]
+    fn sanitize_failed_anyrouter_usage_data_clears_metadata_and_request_bodies() {
+        let mut data = crate::event::UsageEventData {
+            provider_name: "Anyrouter".to_string(),
+            model: "gpt-4o".to_string(),
+            status_code: Some(500),
+            error_message: Some("upstream internal server error".to_string()),
+            error_category: Some("server_error".to_string()),
+            request_metadata: Some(json!({"trace_id": "t-1", "reasoning": "high"})),
+            request_body: Some(json!({"messages": [{"role": "user", "content": "hi"}]})),
+            request_body_ref: Some("usage://ref-1".to_string()),
+            request_body_state: Some(UsageBodyCaptureState::Inline),
+            request_headers: Some(json!({"authorization": "Bearer sec"})),
+            provider_request_body: Some(json!({"model": "gpt-4o"})),
+            provider_request_body_ref: Some("usage://ref-2".to_string()),
+            provider_request_body_state: Some(UsageBodyCaptureState::Inline),
+            provider_request_headers: Some(json!({"x-key": "sec"})),
+            response_body: Some(json!({"error": {"message": "bad gateway"}})),
+            response_headers: Some(json!({"content-type": "application/json"})),
+            client_response_body: Some(json!({"error": "bad gateway"})),
+            client_response_headers: Some(json!({"content-type": "application/json"})),
+            ..Default::default()
+        };
+
+        sanitize_failed_anyrouter_usage_data(&mut data);
+
+        assert!(data.request_metadata.is_none());
+        assert!(data.request_body.is_none());
+        assert!(data.request_body_ref.is_none());
+        assert_eq!(data.request_body_state, Some(UsageBodyCaptureState::None));
+        assert!(data.request_headers.is_none());
+        assert!(data.provider_request_body.is_none());
+        assert!(data.provider_request_body_ref.is_none());
+        assert_eq!(
+            data.provider_request_body_state,
+            Some(UsageBodyCaptureState::None)
+        );
+        assert!(data.provider_request_headers.is_none());
+        // Errors and responses are preserved
+        assert_eq!(data.status_code, Some(500));
+        assert_eq!(
+            data.error_message.as_deref(),
+            Some("upstream internal server error")
+        );
+        assert_eq!(data.error_category.as_deref(), Some("server_error"));
+        assert!(data.response_body.is_some());
+        assert!(data.response_headers.is_some());
+        assert!(data.client_response_body.is_some());
+        assert!(data.client_response_headers.is_some());
     }
 
     #[test]

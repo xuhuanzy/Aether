@@ -4,7 +4,8 @@ use aether_data_contracts::DataLayerError;
 use crate::request_metadata::{
     attach_client_request_body_metadata, attach_provider_request_body_metadata,
     clear_client_request_body_metadata, clear_provider_request_body_metadata,
-    request_body_derived_facts_action, sanitize_usage_request_metadata,
+    is_anyrouter_name_or_url, request_body_derived_facts_action,
+    sanitize_failed_anyrouter_usage_data, sanitize_usage_request_metadata,
     RequestBodyDerivedFactsAction,
 };
 use crate::{UsageEvent, UsageEventType};
@@ -41,6 +42,14 @@ pub fn build_upsert_usage_record_from_event(
         }
     };
     let mut data = event.data.clone();
+
+    let is_anyrouter = is_anyrouter_name_or_url(&data.provider_name);
+    let is_failed = matches!(event.event_type, UsageEventType::Failed)
+        || data.status_code.is_some_and(|code| code >= 400);
+
+    if is_anyrouter && is_failed {
+        sanitize_failed_anyrouter_usage_data(&mut data);
+    }
     // Request-derived facts are captured before body capture policy is applied. Do not let a
     // truncation/disabled placeholder clear those facts while converting the queued event into a
     // database record. Inline (or ref-loaded) bodies remain authoritative and may clear stale
@@ -435,6 +444,60 @@ mod tests {
         assert_eq!(record.status_code, Some(499));
         assert_eq!(record.response_time_ms, Some(200));
         assert_eq!(record.first_byte_time_ms, Some(50));
+    }
+
+    #[test]
+    fn anyrouter_failed_usage_event_clears_metadata_and_request_bodies() {
+        let record = build_upsert_usage_record_from_event(&UsageEvent {
+            event_type: UsageEventType::Failed,
+            request_id: "req-anyrouter-fail".to_string(),
+            timestamp_ms: 1_700_000_000_000,
+            data: UsageEventData {
+                provider_name: "Anyrouter".to_string(),
+                model: "gpt-4o".to_string(),
+                status_code: Some(502),
+                error_message: Some("bad gateway from upstream".to_string()),
+                error_category: Some("server_error".to_string()),
+                request_metadata: Some(serde_json::json!({
+                    "trace_id": "trace-anyrouter-1",
+                    "reasoning_effort": "high",
+                    "billing_snapshot": { "status": "failed" }
+                })),
+                request_headers: Some(serde_json::json!({"authorization": "Bearer secret"})),
+                request_body: Some(
+                    serde_json::json!({"messages": [{"role": "user", "content": "hi"}]}),
+                ),
+                provider_request_headers: Some(serde_json::json!({"x-key": "secret"})),
+                provider_request_body: Some(serde_json::json!({"model": "gpt-4o"})),
+                response_headers: Some(serde_json::json!({"content-type": "application/json"})),
+                response_body: Some(serde_json::json!({"error": {"message": "bad gateway"}})),
+                client_response_headers: Some(
+                    serde_json::json!({"content-type": "application/json"}),
+                ),
+                client_response_body: Some(serde_json::json!({"error": "bad gateway"})),
+                ..UsageEventData::default()
+            },
+        })
+        .expect("record should build");
+
+        assert_eq!(record.status, "failed");
+        assert_eq!(record.status_code, Some(502));
+        assert_eq!(
+            record.error_message.as_deref(),
+            Some("bad gateway from upstream")
+        );
+        assert_eq!(record.error_category.as_deref(), Some("server_error"));
+        // Metadata and request-side data must be None
+        assert!(record.request_metadata.is_none());
+        assert!(record.request_headers.is_none());
+        assert!(record.request_body.is_none());
+        assert!(record.provider_request_headers.is_none());
+        assert!(record.provider_request_body.is_none());
+        // Upstream and client responses must remain preserved
+        assert!(record.response_body.is_some());
+        assert!(record.response_headers.is_some());
+        assert!(record.client_response_body.is_some());
+        assert!(record.client_response_headers.is_some());
     }
 
     #[test]

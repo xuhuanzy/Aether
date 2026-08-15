@@ -8404,7 +8404,11 @@ ORDER BY "usage".user_id ASC
                     );
                     let replace_terminal_snapshots =
                         matches!(usage.status.as_str(), "completed" | "failed" | "cancelled");
-                    if capture_update_allowed
+                    let is_failed_anyrouter =
+                        matches!(usage.status.as_str(), "failed" | "cancelled")
+                            && is_anyrouter_name_or_url(&usage.provider_name);
+                    if !is_failed_anyrouter
+                        && capture_update_allowed
                         && request_metadata_value.is_none()
                         && (replace_terminal_snapshots
                             || replace_client_request_body_facts
@@ -12103,6 +12107,13 @@ fn clear_previous_request_body_facts(
     // Keep an explicit empty object as a tombstone. Binding SQL NULL here would make the upsert's
     // COALESCE retain the previous candidate's request-derived facts.
     Value::Object(metadata)
+}
+
+fn is_anyrouter_name_or_url(provider_name: &str) -> bool {
+    let lower = provider_name.trim().to_ascii_lowercase();
+    lower == "anyrouter"
+        || lower.contains("anyrouter.top")
+        || lower.contains("a-ocnfniawgw.cn-shanghai.fcapp.run")
 }
 
 fn retain_previous_request_audit_metadata(

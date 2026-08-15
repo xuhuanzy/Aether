@@ -2768,6 +2768,13 @@ fn clear_request_body_facts(
     Value::Object(metadata)
 }
 
+fn is_anyrouter_name_or_url(provider_name: &str) -> bool {
+    let lower = provider_name.trim().to_ascii_lowercase();
+    lower == "anyrouter"
+        || lower.contains("anyrouter.top")
+        || lower.contains("a-ocnfniawgw.cn-shanghai.fcapp.run")
+}
+
 fn retain_previous_request_audit_metadata(
     metadata: Option<&Value>,
     preserve_client_request_body_facts: bool,
@@ -2899,28 +2906,34 @@ impl UsageWriteRepository for InMemoryUsageReadRepository {
                 clear_provider_request_body,
             ));
         }
-        let request_metadata = incoming_request_metadata.or_else(|| {
-            if replace_routing_snapshot {
-                Some(retain_previous_request_audit_metadata(
+        let is_failed_anyrouter = matches!(usage.status.as_str(), "failed" | "cancelled")
+            && is_anyrouter_name_or_url(&usage.provider_name);
+        let request_metadata = if is_failed_anyrouter {
+            None
+        } else {
+            incoming_request_metadata.or_else(|| {
+                if replace_routing_snapshot {
+                    Some(retain_previous_request_audit_metadata(
+                        existing
+                            .as_ref()
+                            .and_then(|existing| existing.request_metadata.as_ref()),
+                        !replace_client_request_body_facts,
+                    ))
+                } else if replace_client_request_body_facts || replace_provider_request_body_facts {
+                    Some(clear_request_body_facts(
+                        existing
+                            .as_ref()
+                            .and_then(|existing| existing.request_metadata.as_ref()),
+                        replace_client_request_body_facts,
+                        replace_provider_request_body_facts,
+                    ))
+                } else {
                     existing
                         .as_ref()
-                        .and_then(|existing| existing.request_metadata.as_ref()),
-                    !replace_client_request_body_facts,
-                ))
-            } else if replace_client_request_body_facts || replace_provider_request_body_facts {
-                Some(clear_request_body_facts(
-                    existing
-                        .as_ref()
-                        .and_then(|existing| existing.request_metadata.as_ref()),
-                    replace_client_request_body_facts,
-                    replace_provider_request_body_facts,
-                ))
-            } else {
-                existing
-                    .as_ref()
-                    .and_then(|existing| existing.request_metadata.clone())
-            }
-        });
+                        .and_then(|existing| existing.request_metadata.clone())
+                }
+            })
+        };
         let request_body_ref = persisted_usage_body_ref(
             usage.request_body_ref.as_deref(),
             usage.request_body.as_ref(),
