@@ -711,6 +711,10 @@ async fn gateway_strips_request_and_response_bodies_when_request_record_level_is
     assert_eq!(stored_usage.status, "completed");
     assert_eq!(stored_usage.total_tokens, 5);
     assert_eq!(stored_usage.response_time_ms, Some(25));
+    assert!(stored_usage.request_headers.is_none());
+    assert!(stored_usage.provider_request_headers.is_none());
+    assert!(stored_usage.response_headers.is_none());
+    assert!(stored_usage.client_response_headers.is_none());
     assert!(stored_usage.request_body.is_none());
     assert!(stored_usage.request_body_ref.is_none());
     assert!(stored_usage.provider_request_body.is_none());

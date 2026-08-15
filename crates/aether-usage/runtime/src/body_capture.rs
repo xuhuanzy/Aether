@@ -21,6 +21,10 @@ struct LimitedUsageBodyCapture {
 }
 
 struct UsageBodyCapturePayloadMut<'a> {
+    request_headers: &'a mut Option<Value>,
+    provider_request_headers: &'a mut Option<Value>,
+    response_headers: &'a mut Option<Value>,
+    client_response_headers: &'a mut Option<Value>,
     request_body: &'a mut Option<Value>,
     request_body_ref: &'a mut Option<String>,
     request_body_state: &'a mut Option<UsageBodyCaptureState>,
@@ -39,6 +43,10 @@ struct UsageBodyCapturePayloadMut<'a> {
 impl<'a> UsageBodyCapturePayloadMut<'a> {
     fn from_event(event: &'a mut UsageEvent) -> Self {
         Self {
+            request_headers: &mut event.data.request_headers,
+            provider_request_headers: &mut event.data.provider_request_headers,
+            response_headers: &mut event.data.response_headers,
+            client_response_headers: &mut event.data.client_response_headers,
             request_body: &mut event.data.request_body,
             request_body_ref: &mut event.data.request_body_ref,
             request_body_state: &mut event.data.request_body_state,
@@ -57,6 +65,10 @@ impl<'a> UsageBodyCapturePayloadMut<'a> {
 
     fn from_record(record: &'a mut UpsertUsageRecord) -> Self {
         Self {
+            request_headers: &mut record.request_headers,
+            provider_request_headers: &mut record.provider_request_headers,
+            response_headers: &mut record.response_headers,
+            client_response_headers: &mut record.client_response_headers,
             request_body: &mut record.request_body,
             request_body_ref: &mut record.request_body_ref,
             request_body_state: &mut record.request_body_state,
@@ -127,6 +139,11 @@ impl UsageBodyCaptureEngine {
 
     fn apply_to_payload(self, payload: UsageBodyCapturePayloadMut<'_>) {
         if matches!(self.policy.record_level, UsageRequestRecordLevel::Basic) {
+            *payload.request_headers = None;
+            *payload.provider_request_headers = None;
+            *payload.response_headers = None;
+            *payload.client_response_headers = None;
+
             disable_usage_body_capture_field(
                 UsageBodyField::RequestBody,
                 "request",

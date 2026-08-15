@@ -12707,6 +12707,10 @@ mod tests {
                 model: "gpt-5".to_string(),
                 total_tokens: Some(42),
                 error_message: Some("upstream failed".to_string()),
+                request_headers: Some(json!({"x-custom-req": "header-1"})),
+                provider_request_headers: Some(json!({"x-provider-req": "header-2"})),
+                response_headers: Some(json!({"x-provider-res": "header-3"})),
+                client_response_headers: Some(json!({"x-client-res": "header-4"})),
                 request_body: Some(json!({
                     "messages":[{"role":"user","content":"hello"}],
                     "reasoning": {"effort": "xhigh"}
@@ -12749,6 +12753,10 @@ mod tests {
 
         assert_eq!(event.data.total_tokens, Some(42));
         assert_eq!(event.data.error_message.as_deref(), Some("upstream failed"));
+        assert!(event.data.request_headers.is_none());
+        assert!(event.data.provider_request_headers.is_none());
+        assert!(event.data.response_headers.is_none());
+        assert!(event.data.client_response_headers.is_none());
         assert!(event.data.request_body.is_none());
         assert!(event.data.request_body_ref.is_none());
         assert!(event.data.provider_request_body.is_none());
