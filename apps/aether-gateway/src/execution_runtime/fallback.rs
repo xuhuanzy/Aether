@@ -32,7 +32,7 @@ fn is_anyrouter_name_or_url(name: &str) -> bool {
 }
 
 pub(crate) const DEFAULT_ANYROUTER_500_RETRY_DELAY: std::time::Duration =
-    std::time::Duration::from_secs(3);
+    std::time::Duration::from_secs(1);
 
 pub(crate) fn is_anyrouter_plan(plan: &ExecutionPlan) -> bool {
     plan.provider_name
