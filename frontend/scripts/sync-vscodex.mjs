@@ -42,7 +42,8 @@ const hasWebDependencies =
 
 function runNpm(args, action) {
   const result = spawnSync(npmCommand, ['--prefix', webRoot, ...args], {
-    stdio: 'inherit'
+   stdio: 'inherit',
+   shell: process.platform === 'win32'
   })
 
   if (result.error) {

@@ -167,6 +167,7 @@ SELECT
   allowed_models,
   EXTRACT(EPOCH FROM expires_at)::bigint AS expires_at_unix_secs,
   cache_ttl_minutes,
+  retry_interval_seconds,
   max_probe_interval_minutes,
   proxy,
   fingerprint,
@@ -226,6 +227,7 @@ SELECT
   allowed_models,
   EXTRACT(EPOCH FROM expires_at)::bigint AS expires_at_unix_secs,
   cache_ttl_minutes,
+  retry_interval_seconds,
   max_probe_interval_minutes,
   proxy,
   fingerprint,
@@ -288,6 +290,7 @@ SELECT
   NULL::jsonb AS allowed_models,
   NULL::bigint AS expires_at_unix_secs,
   NULL::integer AS cache_ttl_minutes,
+  retry_interval_seconds,
   NULL::integer AS max_probe_interval_minutes,
   NULL::jsonb AS proxy,
   NULL::jsonb AS fingerprint,
@@ -364,6 +367,7 @@ SET
   allowed_models = $14,
   capabilities = $15,
   cache_ttl_minutes = $16,
+  retry_interval_seconds = $29,
   max_probe_interval_minutes = $17,
   auto_fetch_models = $18,
   locked_models = $19,
@@ -565,6 +569,7 @@ fn key_update_query(key: &StoredProviderCatalogKey) -> Query<'_, Postgres, PgArg
         .bind(key.updated_at_unix_secs.map(|value| value as f64))
         .bind(&key.auth_type_by_format)
         .bind(&key.allow_auth_channel_mismatch_formats)
+        .bind(key.retry_interval_seconds)
 }
 
 fn push_admin_key_assignments<'args>(
@@ -601,6 +606,8 @@ fn push_admin_key_assignments<'args>(
         .push_bind(&key.capabilities)
         .push(", cache_ttl_minutes = ")
         .push_bind(key.cache_ttl_minutes)
+        .push(", retry_interval_seconds = ")
+        .push_bind(key.retry_interval_seconds)
         .push(", max_probe_interval_minutes = ")
         .push_bind(key.max_probe_interval_minutes)
         .push(", auto_fetch_models = ")
@@ -1687,6 +1694,7 @@ INSERT INTO provider_api_keys (
   allowed_models,
   capabilities,
   cache_ttl_minutes,
+  retry_interval_seconds,
   max_probe_interval_minutes,
   auto_fetch_models,
   locked_models,
@@ -1741,6 +1749,7 @@ INSERT INTO provider_api_keys (
   $16,
   $17,
   $18,
+  $54,
   $19,
   $20,
   $21,
@@ -1874,6 +1883,7 @@ INSERT INTO provider_api_keys (
         .bind(key.created_at_unix_ms.map(|value| value as f64))
         .bind(key.updated_at_unix_secs.map(|value| value as f64))
         .bind(&key.allow_auth_channel_mismatch_formats)
+        .bind(key.retry_interval_seconds)
         .execute(&self.pool)
         .await
         .map_postgres_err()?;
@@ -3536,6 +3546,7 @@ fn map_key_row(row: &PgRow) -> Result<StoredProviderCatalogKey, DataLayerError> 
         })
         .transpose()?;
     let concurrent_limit = row_get::<Option<i32>>(row, "concurrent_limit")?;
+    let retry_interval_seconds = row_get::<i32>(row, "retry_interval_seconds")?;
     let learned_rpm_limit = row_get::<Option<i32>>(row, "learned_rpm_limit")?
         .map(|value| {
             u32::try_from(value).map_err(|_| {
@@ -3724,6 +3735,7 @@ fn map_key_row(row: &PgRow) -> Result<StoredProviderCatalogKey, DataLayerError> 
         key.note = row.try_get("note").ok();
         key.internal_priority = row.try_get("internal_priority").unwrap_or(50);
         key.cache_ttl_minutes = row.try_get("cache_ttl_minutes").unwrap_or(5);
+        key.retry_interval_seconds = retry_interval_seconds;
         key.max_probe_interval_minutes = row.try_get("max_probe_interval_minutes").unwrap_or(32);
         key.last_429_type = row.try_get("last_429_type").ok();
         key.utilization_samples = row.try_get("utilization_samples").ok();

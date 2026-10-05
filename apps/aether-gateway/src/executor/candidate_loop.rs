@@ -289,6 +289,15 @@ where
         Ok(crate::orchestration::next_same_key_retry_attempt(attempt))
     }
 
+    async fn wait_before_retry(
+        &self,
+        key_id: String,
+        next_provider_id: &str,
+    ) -> Result<(), Self::Error> {
+        wait_for_key_retry_interval(self.state, self.transfer_tracker, key_id, next_provider_id)
+            .await
+    }
+
     async fn record_attempt_failed(&self, attempt: &T) -> Result<(), Self::Error> {
         record_provider_transfer_attempt_failed(
             self.state,
@@ -1045,6 +1054,45 @@ async fn record_provider_transfer_attempt_failed<Attempt>(
     }
 }
 
+async fn wait_for_key_retry_interval(
+    state: &AppState,
+    transfer_tracker: &ProviderTransferTracker,
+    key_id: String,
+    next_provider_id: &str,
+) -> Result<(), GatewayError> {
+    let keys = state.read_provider_catalog_keys_by_ids(&[key_id]).await?;
+    let seconds = keys.first().map_or(0, |key| key.retry_interval_seconds);
+    if seconds <= 0 {
+        return Ok(());
+    }
+    let tracker = transfer_tracker.state.lock().await;
+    let budgets = [
+        tracker
+            .global
+            .first_attempt_started_at
+            .zip(tracker.global.limits),
+        tracker
+            .by_provider
+            .get(next_provider_id)
+            .and_then(|provider| Some((provider.first_attempt_started_at, provider.limits?))),
+    ];
+    let now = Instant::now();
+    let mut delay = Duration::from_secs(seconds as u64);
+    // 等待不能延长请求和提供商已有的故障转移时限.
+    for (started_at, limits) in budgets.into_iter().flatten() {
+        if limits.max_transfer_timeout_seconds > 0 {
+            let remaining = Duration::from_secs(limits.max_transfer_timeout_seconds)
+                .saturating_sub(now.saturating_duration_since(started_at));
+            delay = delay.min(remaining);
+        }
+    }
+    drop(tracker);
+    if !delay.is_zero() {
+        tokio::time::sleep(delay).await;
+    }
+    Ok(())
+}
+
 async fn run_dynamic_attempt_loop<Port, Source, Attempt>(
     port: &Port,
     source: &mut Source,
@@ -1063,6 +1111,7 @@ where
     Attempt: AiExecutionAttempt + Send + Sync + 'static,
 {
     let mut last_attempted = None;
+    let mut pending_retry_key = None;
     let mut fallback_response = None;
     // A same-key retry derived after a candidate-scoped failure runs before
     // the source is asked for the next candidate.
@@ -1090,6 +1139,10 @@ where
                 attempt
             }
         };
+        if let Some(key_id) = pending_retry_key.take() {
+            port.wait_before_retry(key_id, &attempt.execution_plan().provider_id)
+                .await?;
+        }
         if port.should_skip_attempt(&attempt).await? {
             let provider_id = attempt.execution_plan().provider_id.clone();
             port.mark_unused_attempts(vec![attempt]).await?;
@@ -1145,6 +1198,7 @@ where
         // Only retain a deep plan/context snapshot when this candidate really
         // failed and exhaustion reporting will need it.
         last_attempted = Some((attempt.execution_plan().clone(), attempt.report_context()));
+        pending_retry_key = Some(attempt.execution_plan().key_id.clone());
     }
 
     if let Some(response) = fallback_response {
@@ -1246,6 +1300,15 @@ where
 
     async fn next_same_key_retry(&self, attempt: &T) -> Result<Option<T>, Self::Error> {
         Ok(crate::orchestration::next_same_key_retry_attempt(attempt))
+    }
+
+    async fn wait_before_retry(
+        &self,
+        key_id: String,
+        next_provider_id: &str,
+    ) -> Result<(), Self::Error> {
+        wait_for_key_retry_interval(self.state, self.transfer_tracker, key_id, next_provider_id)
+            .await
     }
 
     async fn record_attempt_failed(&self, attempt: &T) -> Result<(), Self::Error> {

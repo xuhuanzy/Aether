@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS public.provider_api_keys (
     allowed_models jsonb,
     expires_at bigint,
     cache_ttl_minutes integer DEFAULT 5 NOT NULL,
+    retry_interval_seconds integer DEFAULT 0 NOT NULL,
     max_probe_interval_minutes integer DEFAULT 32 NOT NULL,
     proxy jsonb,
     fingerprint jsonb,

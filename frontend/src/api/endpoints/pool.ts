@@ -154,6 +154,7 @@ export interface PoolKeyDetail {
   internal_priority?: number
   rpm_limit?: number | null
   concurrent_limit?: number | null
+  retry_interval_seconds?: number
   cache_ttl_minutes?: number
   max_probe_interval_minutes?: number
   note?: string | null

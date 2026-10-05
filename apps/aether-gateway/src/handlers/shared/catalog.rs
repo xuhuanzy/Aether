@@ -3256,6 +3256,10 @@ pub(crate) fn build_admin_provider_key_response(
         json!(key.cache_ttl_minutes),
     );
     payload.insert(
+        "retry_interval_seconds".to_string(),
+        json!(key.retry_interval_seconds),
+    );
+    payload.insert(
         "max_probe_interval_minutes".to_string(),
         json!(key.max_probe_interval_minutes),
     );

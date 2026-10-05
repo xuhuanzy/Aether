@@ -370,6 +370,11 @@ type = "int32"
 default = 5
 
 [[table.provider_api_keys.columns]]
+name = "retry_interval_seconds"
+type = "int32"
+default = 0
+
+[[table.provider_api_keys.columns]]
 name = "max_probe_interval_minutes"
 type = "int32"
 default = 32

@@ -105,6 +105,8 @@ pub(crate) struct AdminProviderKeyUpdateRequest {
     #[serde(default)]
     pub(crate) cache_ttl_minutes: Option<i32>,
     #[serde(default)]
+    pub(crate) retry_interval_seconds: Option<i32>,
+    #[serde(default)]
     pub(crate) max_probe_interval_minutes: Option<i32>,
     #[serde(default)]
     pub(crate) is_active: Option<bool>,

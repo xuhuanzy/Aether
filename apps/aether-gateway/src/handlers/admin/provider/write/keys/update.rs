@@ -336,6 +336,12 @@ pub(crate) fn build_admin_update_provider_key_record_with_existing_keys(
     if fields.contains("capabilities") {
         updated.capabilities = normalize_json_object(payload.capabilities, "capabilities")?;
     }
+    if fields.contains("retry_interval_seconds") {
+        updated.retry_interval_seconds = payload
+            .retry_interval_seconds
+            .filter(|value| *value >= 0)
+            .ok_or_else(|| "retry_interval_seconds 必须是非负整数".to_string())?;
+    }
     if let Some(cache_ttl_minutes) = payload.cache_ttl_minutes {
         updated.cache_ttl_minutes = cache_ttl_minutes;
     }

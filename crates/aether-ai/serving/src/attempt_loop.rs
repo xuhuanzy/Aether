@@ -98,6 +98,14 @@ where
         Ok(())
     }
 
+    async fn wait_before_retry(
+        &self,
+        _key_id: String,
+        _next_provider_id: &str,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
     /// After `attempt` failed with candidate scope, return the next attempt on
     /// the same key, or `None` once the sticky-key budget is used up. Retries
     /// are derived here on demand so no attempt is materialized before it is
@@ -129,6 +137,7 @@ where
     let mut remaining = attempts.into_iter();
     let mut pending_same_key_retry: Option<Attempt> = None;
     let mut last_attempted = None;
+    let mut pending_retry_key = None;
     let mut retry_filters: Vec<AiAttemptRetryFilter> = Vec::new();
     let mut fallback_response = None;
 
@@ -136,9 +145,15 @@ where
         let Some(attempt) = pending_same_key_retry.take().or_else(|| remaining.next()) else {
             break;
         };
-        if retry_filters.iter().any(|filter| filter.matches(&attempt))
-            || port.should_skip_attempt(&attempt).await?
-        {
+        if retry_filters.iter().any(|filter| filter.matches(&attempt)) {
+            port.mark_unused_attempts(vec![attempt]).await?;
+            continue;
+        }
+        if let Some(key_id) = pending_retry_key.take() {
+            port.wait_before_retry(key_id, &attempt.execution_plan().provider_id)
+                .await?;
+        }
+        if port.should_skip_attempt(&attempt).await? {
             port.mark_unused_attempts(vec![attempt]).await?;
             continue;
         }
@@ -174,6 +189,7 @@ where
         // Exhaustion diagnostics are only needed after an attempt fails. Keep
         // the common successful path free of a deep plan/report-context clone.
         last_attempted = Some((attempt.execution_plan().clone(), attempt.report_context()));
+        pending_retry_key = Some(attempt.execution_plan().key_id.clone());
     }
 
     if let Some(response) = fallback_response {

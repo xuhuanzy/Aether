@@ -252,6 +252,25 @@
             {{ legacyT('留空或 0 表示不限制') }}
           </p>
         </div>
+        <div v-if="isEditMode">
+          <Label
+            for="retry_interval_seconds"
+            class="text-xs"
+          >{{ legacyT('失败重试间隔') }} (s)</Label>
+          <Input
+            id="retry_interval_seconds"
+            :model-value="form.retry_interval_seconds"
+            type="number"
+            min="0"
+            max="2147483647"
+            step="1"
+            class="h-8"
+            @update:model-value="(v) => form.retry_interval_seconds = parseNumberInput(v, { min: 0, max: 2147483647 }) ?? 0"
+          />
+          <p class="text-xs text-muted-foreground mt-0.5">
+            {{ legacyT('0 表示立即重试') }}
+          </p>
+        </div>
         <div>
           <Label
             for="cache_ttl_minutes"
@@ -715,6 +734,7 @@ const form = ref({
   internal_priority: 10,
   rpm_limit: undefined as number | null | undefined,  // RPM 限制（null=自适应，undefined=保持原值）
   concurrent_limit: undefined as number | null | undefined,  // 并发请求上限（null/0=不限制，undefined=保持原值）
+  retry_interval_seconds: 0,
   cache_ttl_minutes: 5,
   max_probe_interval_minutes: 32,
   note: '',
@@ -809,6 +829,7 @@ function resetForm() {
     internal_priority: 10,
     rpm_limit: undefined,
     concurrent_limit: undefined,
+    retry_interval_seconds: 0,
     cache_ttl_minutes: 5,
     max_probe_interval_minutes: 32,
     note: '',
@@ -860,6 +881,7 @@ function loadKeyData() {
     // 保留原始的 null/undefined 状态，null 表示自适应模式
     rpm_limit: props.editingKey.rpm_limit ?? undefined,
     concurrent_limit: props.editingKey.concurrent_limit ?? undefined,
+    retry_interval_seconds: props.editingKey.retry_interval_seconds ?? 0,
     cache_ttl_minutes: props.editingKey.cache_ttl_minutes ?? 5,
     max_probe_interval_minutes: props.editingKey.max_probe_interval_minutes ?? 32,
     note: props.editingKey.note || '',
@@ -983,6 +1005,7 @@ async function handleSave() {
         internal_priority: form.value.internal_priority,
         rpm_limit: form.value.rpm_limit,
         concurrent_limit: form.value.concurrent_limit,
+        retry_interval_seconds: form.value.retry_interval_seconds,
         cache_ttl_minutes: form.value.cache_ttl_minutes,
         max_probe_interval_minutes: form.value.max_probe_interval_minutes,
         note: form.value.note,

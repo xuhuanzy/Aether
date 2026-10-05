@@ -2618,6 +2618,7 @@ function toEndpointApiKey(key: PoolKeyDetail): EndpointAPIKey {
     internal_priority: key.internal_priority ?? 50,
     rpm_limit: key.rpm_limit ?? null,
     concurrent_limit: key.concurrent_limit ?? null,
+    retry_interval_seconds: key.retry_interval_seconds ?? 0,
     allowed_models: key.allowed_models ?? null,
     capabilities: key.capabilities ?? null,
     cache_ttl_minutes: key.cache_ttl_minutes ?? 5,
