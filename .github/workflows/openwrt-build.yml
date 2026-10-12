@@ -41,20 +41,28 @@ jobs:
           retention-days: 1
 
   build:
-    name: Build ARM64 Binary
+    name: Build ${{ matrix.arch }} Binary
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            target: x86_64-unknown-linux-musl
+          - arch: arm64
+            target: aarch64-unknown-linux-musl
     steps:
       - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-unknown-linux-musl
+          targets: ${{ matrix.target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: openwrt-build-aarch64-musl
+          shared-key: openwrt-build-${{ matrix.target }}
           workspaces: . -> target
 
       - name: Install cross
@@ -65,18 +73,18 @@ jobs:
           AETHER_BUILD_TYPE: release
           CARGO_TERM_COLOR: always
         run: |
-          cross build --release --locked -p aether-gateway --target aarch64-unknown-linux-musl
+          cross build --release --locked -p aether-gateway --target ${{ matrix.target }}
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v5
         with:
-          name: aether-gateway-arm64
-          path: target/aarch64-unknown-linux-musl/release/aether-gateway
+          name: aether-gateway-${{ matrix.arch }}
+          path: target/${{ matrix.target }}/release/aether-gateway
           if-no-files-found: error
           retention-days: 1
 
   docker:
-    name: Build & Push ARM64 Docker Image
+    name: Build & Push Docker Image
     needs: [frontend, build]
     runs-on: ubuntu-latest
     steps:
@@ -90,8 +98,9 @@ jobs:
       - name: Prepare dist layout
         run: |
           mkdir -p dist
+          cp artifacts/aether-gateway-amd64/aether-gateway dist/aether-gateway-amd64
           cp artifacts/aether-gateway-arm64/aether-gateway dist/aether-gateway-arm64
-          chmod +x dist/aether-gateway-arm64
+          chmod +x dist/aether-gateway-amd64 dist/aether-gateway-arm64
           cp -r artifacts/frontend-dist dist/frontend
 
       - name: Set up QEMU
@@ -113,4 +122,4 @@ jobs:
           file: ./Dockerfile.app
           push: true
           tags: docker.io/${{ env.DOCKERHUB_IMAGE }}:latest
-          platforms: linux/arm64
+          platforms: linux/amd64,linux/arm64
